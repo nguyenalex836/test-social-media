@@ -1,0 +1,91 @@
+name: "Mark Blog Post as Promoted"
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  issues: write
+
+jobs:
+  mark-promoted:
+    if: contains(toJson(github.event.issue.labels), '"name":"expedited-blog"')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse blog issue number from body
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            const match = body.match(/nguyenalex836\/test-blog#(\d+)/);
+            if (!match) {
+              core.setFailed(
+                'Could not find a test-blog issue reference in this issue body. ' +
+                'Expected format: nguyenalex836/test-blog#<number>. ' +
+                'Please apply the social-promoted label to the blog issue manually.'
+              );
+              return;
+            }
+            const blogIssueNumber = parseInt(match[1], 10);
+            core.setOutput('blog_issue_number', blogIssueNumber);
+            core.info(`Found blog issue number: ${blogIssueNumber}`);
+
+      - name: Apply social-promoted label to test-blog issue
+        id: label
+        uses: actions/github-script@v7
+        env:
+          BLOG_REPO_TOKEN: ${{ secrets.BLOG_REPO_TOKEN }}
+        with:
+          github-token: ${{ secrets.BLOG_REPO_TOKEN }}
+          script: |
+            const blogIssueNumber = parseInt('${{ steps.parse.outputs.blog_issue_number }}', 10);
+            try {
+              await github.rest.issues.addLabels({
+                owner: 'nguyenalex836',
+                repo: 'test-blog',
+                issue_number: blogIssueNumber,
+                labels: ['social-promoted'],
+              });
+              core.info(`Applied social-promoted label to test-blog#${blogIssueNumber}`);
+              core.setOutput('success', 'true');
+            } catch (error) {
+              core.setOutput('success', 'false');
+              core.setFailed(`Failed to apply label to test-blog#${blogIssueNumber}: ${error.message}`);
+            }
+
+      - name: Comment on test-social-media issue confirming completion
+        if: steps.label.outputs.success == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const blogIssueNumber = '${{ steps.parse.outputs.blog_issue_number }}';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `✅ Marked [nguyenalex836/test-blog#${blogIssueNumber}](https://github.com/nguyenalex836/test-blog/issues/${blogIssueNumber}) as \`social-promoted\`. This post will be excluded from the next weekly summary.`,
+            });
+
+      - name: Warn on failure
+        if: steps.label.outputs.success == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const blogIssueNumber = '${{ steps.parse.outputs.blog_issue_number }}';
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `⚠️ Could not automatically apply \`social-promoted\` to [test-blog#${blogIssueNumber}](https://github.com/nguyenalex836/test-blog/issues/${blogIssueNumber}). Please apply it manually. Check the [workflow logs](https://github.com/nguyenalex836/test-social-media/actions) for details.`,
+            });
+            try {
+              await github.rest.issues.createComment({
+                owner: 'nguyenalex836',
+                repo: 'test-blog',
+                issue_number: parseInt(blogIssueNumber, 10),
+                body: `⚠️ @nguyenalex836 — automation failed to apply the \`social-promoted\` label after the expedited promotion was completed. Please apply it manually to prevent this post from appearing in the next weekly summary.`,
+              });
+            } catch (e) {
+              core.warning(`Could not comment on blog issue: ${e.message}`);
+            }
