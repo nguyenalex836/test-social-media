@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   mark-promoted:
-    if: contains(toJson(github.event.issue.labels), '"name":"expedited-blog"')
+    if: contains(github.event.issue.labels.*.name, 'expedited-blog')
     runs-on: ubuntu-latest
     steps:
       - name: Parse blog issue number from body
