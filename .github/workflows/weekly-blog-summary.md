@@ -160,7 +160,7 @@ mcp-scripts:
       if token:
           headers["Authorization"] = f"Bearer {token}"
 
-      query = f'repo:github/blog label:social-promoted "{post_url}" in:body'
+      query = f'repo:nguyenalex836/test-blog label:social-promoted "{post_url}" in:body'
       search_url = f"https://api.github.com/search/issues?q={query.replace(' ', '+')}&per_page=1"
 
       try:
